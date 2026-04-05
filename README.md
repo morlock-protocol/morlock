@@ -278,4 +278,4 @@ We're building the infrastructure layer for the agentic web. Come help.
 
 ---
 
-*Made with 🖤 by [Werner](https://github.com/werner) and contributors.*
+*Made with 🖤 by [Minds & Machines](https://mnm.dev) and contributors.*
