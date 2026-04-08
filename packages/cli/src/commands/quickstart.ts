@@ -1,84 +1,18 @@
 #!/usr/bin/env node
 
-import * as readline from "readline";
-
-const C = {
-  reset:   "\x1b[0m",
-  bold:    "\x1b[1m",
-  dim:     "\x1b[2m",
-  green:   "\x1b[32m",
-  cyan:    "\x1b[36m",
-  yellow:  "\x1b[33m",
-  white:   "\x1b[97m",
-  gray:    "\x1b[90m",
-  bgBlack: "\x1b[40m",
-};
-
-const g   = (s: string): string => `${C.green}${s}${C.reset}`;
-const c   = (s: string): string => `${C.cyan}${s}${C.reset}`;
-const y   = (s: string): string => `${C.yellow}${s}${C.reset}`;
-const dim = (s: string): string => `${C.dim}${C.gray}${s}${C.reset}`;
-const b   = (s: string): string => `${C.bold}${s}${C.reset}`;
-const w   = (s: string): string => `${C.white}${s}${C.reset}`;
-
-const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
-
-function clearScreen(): void { process.stdout.write("\x1bc"); }
-
-function typewrite(text: string, delay = 18): Promise<void> {
-  return new Promise(resolve => {
-    let i = 0;
-    const tick = (): void => {
-      if (i < text.length) {
-        process.stdout.write(text[i++]);
-        setTimeout(tick, delay);
-      } else {
-        process.stdout.write("\n");
-        resolve();
-      }
-    };
-    tick();
-  });
-}
-
-async function printLines(lines: string[], opts: { lineDelay?: number; typeFirst?: boolean } = {}): Promise<void> {
-  const { lineDelay = 60, typeFirst = false } = opts;
-  for (let i = 0; i < lines.length; i++) {
-    if (typeFirst && i === 0) {
-      await typewrite(lines[i], 20);
-    } else {
-      console.log(lines[i]);
-    }
-    if (i < lines.length - 1) await sleep(lineDelay);
-  }
-}
-
-function prompt(question: string): Promise<string> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise(resolve => {
-    rl.question(question, (answer: string) => { rl.close(); resolve(answer.trim()); });
-  });
-}
-
-function hr(): void { console.log(dim("\u2500".repeat(56))); }
-
-function header(step: number, total: number, title: string): void {
-  console.log("");
-  console.log(dim(`  step ${step} of ${total}`));
-  console.log(`  ${b(w(title))}`);
-  console.log("");
-}
-
-async function waitForEnter(label = "Press Enter to continue"): Promise<void> {
-  await prompt(`  ${dim(`[ ${label} ]`)} `);
-}
+import {
+  C, g, c, y, dim, b, w,
+  sleep, clearScreen, typewrite, printLines,
+  prompt, hr, header, waitForEnter,
+  LOGO, SPINNER_FRAMES,
+} from "../ui";
 
 // ─── Screens ──────────────────────────────────────────────────────────────────
 
 async function screenWelcome(): Promise<void> {
   clearScreen();
   console.log("");
-  console.log(`  ${g("\u2593\u2593")} ${b(w("Morlock"))}  ${dim("quickstart")}`);
+  console.log(`  ${LOGO}  ${dim("quickstart")}`);
   console.log(`  ${dim("Make your site natively agent-friendly.")}`);
   console.log("");
   hr();
@@ -110,10 +44,9 @@ async function screenInstall(): Promise<void> {
   console.log("");
   await sleep(600);
 
-  const frames = ["\u280B","\u2819","\u2839","\u2838","\u283C","\u2834","\u2826","\u2827","\u2807","\u280F"];
   let fi = 0;
   const spin = setInterval(() => {
-    process.stdout.write(`\r  ${C.cyan}${frames[fi++ % frames.length]}${C.reset}  ${dim("fetching @morlock/core...")}`);
+    process.stdout.write(`\r  ${C.cyan}${SPINNER_FRAMES[fi++ % SPINNER_FRAMES.length]}${C.reset}  ${dim("fetching @morlock/core...")}`);
   }, 80);
 
   await sleep(2200);
@@ -276,7 +209,7 @@ async function screenAgent(): Promise<void> {
     { text: `\u2192  calling ${c("search")}  ${dim('{ query: "morlock protocol" }')}`, delay: 2100 },
     { text: `${g("\u2713")}  3 results returned in 42ms`,                   delay: 2800 },
     { text: "",                                                              delay: 3100 },
-    { text: `${g("\u2593\u2593")}  ${b(w("Your site is agent-ready."))}`,  delay: 3300 },
+    { text: `${LOGO}  ${b(w("Your site is agent-ready."))}`,               delay: 3300 },
   ];
 
   for (const s of steps) {

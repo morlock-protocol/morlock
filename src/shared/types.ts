@@ -62,6 +62,13 @@ export interface MorlockManifest {
     windowMs: number;
   };
   contact?: string;          // abuse/support email
+
+  /** One-liner that agents carry into conversations */
+  tagline?: string;
+  /** Tone/personality hint for agents rendering this site's responses */
+  voice?: string;
+  /** Registry name for this site's agent identity, e.g. "morlock/acme-search" */
+  agentName?: string;
 }
 
 export type MorlockAuthType = "none" | "bearer" | "apikey" | "oauth2";

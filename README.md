@@ -253,6 +253,24 @@ Think of Morlock as the HTTP layer that MCP servers can sit on top of.
 
 ---
 
+## Badge
+
+Show the world your site is agent-ready:
+
+```md
+![Morlock-ready](https://morlocks.dev/badge/your-app.com)
+```
+
+Or generate it with the CLI:
+
+```bash
+morlock badge your-app.com
+```
+
+The badge shows your command count and lights up green when `/.well-known/morlock` is healthy.
+
+---
+
 ## Roadmap
 
 - [ ] `@morlock/registry` — a public index of Morlock-enabled sites

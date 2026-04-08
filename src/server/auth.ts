@@ -92,7 +92,7 @@ export async function enforceAuth(
     return {
       ok: false,
       status: 401,
-      reason: "Authorization required. Provide a Bearer token or X-Api-Key header.",
+      reason: "The gates are locked. Provide a Bearer token or X-Api-Key header.",
     };
   }
 

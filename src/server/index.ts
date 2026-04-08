@@ -87,6 +87,14 @@ export interface MorlockConfig {
   corsOrigins?: string[] | "*";
 
   contact?: string;
+
+  /** One-liner that agents carry into conversations */
+  tagline?: string;
+  /** Tone/personality hint for agents rendering this site's responses */
+  voice?: string;
+  /** Registry name for this site's agent identity, e.g. "morlock/acme-search" */
+  agentName?: string;
+
   onRequest?: (req: MorlockRequest, ctx: MorlockContext) => void;
   onError?: (err: unknown, req: MorlockRequest) => void;
 }
@@ -143,6 +151,9 @@ export class Morlock {
           }
         : undefined,
       contact: this.config.contact,
+      tagline: this.config.tagline,
+      voice: this.config.voice,
+      agentName: this.config.agentName,
     };
   }
 
@@ -169,7 +180,7 @@ export class Morlock {
           requestId,
           error: {
             code: MorlockErrors.RATE_LIMITED,
-            message: "Too many requests. Slow down.",
+            message: "The machinery needs rest. Too many requests.",
           },
           meta: {
             rateLimitRemaining: rl.remaining,
@@ -187,7 +198,7 @@ export class Morlock {
         requestId,
         error: {
           code: MorlockErrors.UNKNOWN_COMMAND,
-          message: "Command not found.",
+          message: "Nothing stirs in the dark. Command not found.",
         },
       };
     }
@@ -298,7 +309,7 @@ export class Morlock {
         requestId,
         error: {
           code: MorlockErrors.COMMAND_FAILED,
-          message: err instanceof Error ? err.message : "Command execution failed",
+          message: err instanceof Error ? err.message : "The gears jammed. Command execution failed.",
         },
         meta: { executionMs: Date.now() - start },
       };
