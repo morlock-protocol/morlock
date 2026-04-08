@@ -9,7 +9,7 @@ export interface MorlockClientOptions {
   bearerToken?: string;
   timeoutMs?: number;         // default 10000
   retries?: number;           // default 2
-  userAgent?: string;         // default "morlock-client/0.1"
+  userAgent?: string;         // default "morlock-client/0.2"
 }
 
 export interface MorlockRunResult {
@@ -55,8 +55,8 @@ export class MorlockSite {
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "User-Agent": this.options.userAgent ?? "morlock-client/0.1",
-      "X-Morlock": "0.1",
+      "User-Agent": this.options.userAgent ?? "morlock-client/0.2",
+      "X-Morlock": "0.2",
     };
 
     if (this.options.bearerToken) {
@@ -161,7 +161,7 @@ export class MorlockClient {
 
     const res = await fetch(discoveryUrl, {
       headers: {
-        "User-Agent": this.options.userAgent ?? "morlock-client/0.1",
+        "User-Agent": this.options.userAgent ?? "morlock-client/0.2",
         "Accept": "application/json",
       },
     });

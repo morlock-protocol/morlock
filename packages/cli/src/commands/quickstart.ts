@@ -233,7 +233,7 @@ async function screenManifest(): Promise<void> {
 
   const manifest = [
     `  ${y("{")}`,
-    `    ${c('"morlock"')}:   ${y('"0.1"')},`,
+    `    ${c('"morlock"')}:   ${y('"0.2"')},`,
     `    ${c('"name"')}:     ${y('"my-app"')},`,
     `    ${c('"version"')}:  ${y('"1.0.0"')},`,
     `    ${c('"commands"')}: [${y('"search"')}],`,

@@ -130,7 +130,7 @@ export class Morlock {
     }
 
     return {
-      morlock: "0.1",
+      morlock: "0.2",
       name: this.config.name,
       baseUrl: this.config.baseUrl,
       endpoint: `${this.config.baseUrl}${this.endpoint}`,
@@ -316,12 +316,12 @@ export class Morlock {
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers":
           "Content-Type, Authorization, X-Api-Key, X-Morlock-Idempotency-Key, X-Morlock-Request-Id",
-        "X-Morlock": "0.1",
+        "X-Morlock": "0.2",
       };
     }
 
     if (!origin || !allowed.includes(origin)) {
-      return { "X-Morlock": "0.1" };
+      return { "X-Morlock": "0.2" };
     }
 
     return {
@@ -330,7 +330,7 @@ export class Morlock {
       "Access-Control-Allow-Headers":
         "Content-Type, Authorization, X-Api-Key, X-Morlock-Idempotency-Key, X-Morlock-Request-Id",
       "Vary": "Origin",
-      "X-Morlock": "0.1",
+      "X-Morlock": "0.2",
     };
   }
 

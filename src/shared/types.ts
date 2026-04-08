@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Morlock Protocol v0.1 — Shared Types
+// Morlock Protocol v0.2 — Shared Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ParamType = "string" | "number" | "boolean" | "object" | "array";
@@ -51,7 +51,7 @@ export interface CommandSchema {
 }
 
 export interface MorlockManifest {
-  morlock: string;            // protocol version e.g. "0.1"
+  morlock: string;            // protocol version e.g. "0.2"
   name: string;              // human-readable site name
   baseUrl: string;           // canonical base URL
   endpoint: string;          // where to POST commands e.g. "/.well-known/morlock"

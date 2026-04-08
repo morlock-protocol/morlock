@@ -4,7 +4,7 @@ Thanks for your interest in contributing. Morlock is an open protocol — the sp
 
 ## Ways to contribute
 
-- **Protocol feedback** — open an issue against `spec/v0.1.md` with proposed changes
+- **Protocol feedback** — open an issue against `spec/v0.2.md` with proposed changes
 - **Framework adapters** — new adapters for Fastify, Hono, Django, Laravel, etc.
 - **Bug fixes** — anything in `src/` with a failing test case
 - **Examples** — real-world usage examples in `examples/`
@@ -19,7 +19,7 @@ Thanks for your interest in contributing. Morlock is an open protocol — the sp
 
 ## Protocol changes
 
-Changes to `spec/v0.1.md` that affect wire format or behaviour require an issue first so the community can discuss before implementation.
+Changes to `spec/v0.2.md` that affect wire format or behaviour require an issue first so the community can discuss before implementation.
 
 ## Code style
 

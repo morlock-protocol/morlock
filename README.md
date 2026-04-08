@@ -108,7 +108,7 @@ Response:
 
 ```json
 {
-  "morlock": "0.1",
+  "morlock": "0.2",
   "name": "Acme Store",
   "baseUrl": "https://acme.com",
   "endpoint": "https://acme.com/.well-known/morlock",
@@ -266,7 +266,7 @@ Think of Morlock as the HTTP layer that MCP servers can sit on top of.
 
 ## Contributing
 
-Morlock is MIT licensed and built in the open. The protocol spec lives in `/spec/v0.1.md`. PRs welcome.
+Morlock is MIT licensed and built in the open. The protocol spec lives in `/spec/v0.2.md`. PRs welcome.
 
 ---
 
