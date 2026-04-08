@@ -1,6 +1,6 @@
 {
   "name": "@morlock/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Make your site agent-native. The open protocol for bot-friendly web interfaces.",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
@@ -14,11 +14,23 @@
     "build": "tsc",
     "dev": "tsc --watch"
   },
-  "keywords": ["agent", "bot", "llm", "ai", "protocol", "mcp", "agentic-web", "morlock"],
+  "keywords": [
+    "agent",
+    "bot",
+    "llm",
+    "ai",
+    "protocol",
+    "mcp",
+    "agentic-web",
+    "morlock"
+  ],
   "license": "MIT",
   "homepage": "https://morlocks.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/morlock-protocol/morlock"
+  },
+  "dependencies": {
+    "@morlock/core": "^0.1.0"
   }
 }

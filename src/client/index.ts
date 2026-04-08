@@ -2,7 +2,7 @@
 // Morlock Client — Agent-side discovery and execution SDK
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { MorlockManifest, MorlockRequest, MorlockResponse } from "../shared/types";
+import { MorlockManifest, MorlockRequest, MorlockResponse, CommandSafety } from "../shared/types";
 
 export interface MorlockClientOptions {
   apiKey?: string;
@@ -10,6 +10,14 @@ export interface MorlockClientOptions {
   timeoutMs?: number;         // default 10000
   retries?: number;           // default 2
   userAgent?: string;         // default "morlock-client/0.1"
+}
+
+export interface MorlockRunResult {
+  result: unknown;
+  /** True if the server returned a cached idempotent replay */
+  replayed: boolean;
+  /** The idempotency key used, if any */
+  idempotencyKey?: string;
 }
 
 // ── Connected Site ────────────────────────────────────────────────────────────
@@ -36,8 +44,9 @@ export class MorlockSite {
   /** Execute a command */
   async run(
     command: string,
-    args: Record<string, unknown> = {}
-  ): Promise<unknown> {
+    args: Record<string, unknown> = {},
+    opts: { idempotencyKey?: string } = {}
+  ): Promise<MorlockRunResult> {
     const request: MorlockRequest = {
       command,
       args,
@@ -60,6 +69,18 @@ export class MorlockSite {
       this.options.apiKey
     ) {
       headers[this.manifest.auth.keyHeader] = this.options.apiKey;
+    }
+
+    // Generate idempotency key for non-read commands; reuse the same key on retries
+    const schema = this.manifest.commands[command];
+    const safety: CommandSafety = schema?.safety ?? "unsafe";
+    const idempotencyKey =
+      safety !== "read"
+        ? (opts.idempotencyKey ?? crypto.randomUUID())
+        : undefined;
+
+    if (idempotencyKey) {
+      headers["X-Morlock-Idempotency-Key"] = idempotencyKey;
     }
 
     const timeout = this.options.timeoutMs ?? 10_000;
@@ -90,12 +111,16 @@ export class MorlockSite {
           );
         }
 
-        return response.result;
+        return {
+          result: response.result,
+          replayed: response.meta?.idempotentReplayed === true,
+          idempotencyKey,
+        };
       } catch (err) {
         lastError = err;
-        if (err instanceof MorlockClientError) throw err; // don't retry logic errors
+        if (err instanceof MorlockClientError) throw err;
         if (attempt < retries) {
-          await sleep(200 * Math.pow(2, attempt)); // exponential backoff
+          await sleep(200 * Math.pow(2, attempt));
         }
       }
     }
