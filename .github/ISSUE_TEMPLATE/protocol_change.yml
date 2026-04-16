@@ -1,0 +1,35 @@
+name: Protocol change proposal
+description: Propose a change to the Morlock wire protocol (spec/v0.2.md or successor).
+labels: ["spec"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Protocol changes affect every deployment of Morlock. Open this issue first to gather feedback before opening a PR against `spec/`.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "What problem are you trying to solve?"
+      description: "Concrete scenario, not just 'it would be nice if...'"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Proposed change"
+      description: "Sketch the wire-format change. Include example request/response if applicable."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: "Compatibility"
+      options:
+        - "Additive only (no existing client breaks)"
+        - "Opt-in breaking (requires major/minor bump)"
+        - "Unclear"
+    validations:
+      required: true

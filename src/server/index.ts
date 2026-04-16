@@ -13,6 +13,7 @@ import {
   MorlockErrors,
   MorlockAuth,
   CommandSchema,
+  ParamSchema,
 } from "../shared/types";
 
 import {
@@ -86,6 +87,13 @@ export interface MorlockConfig {
    */
   corsOrigins?: string[] | "*";
 
+  /**
+   * Max request body size in bytes. Enforced by the Next.js and fetch()
+   * adapters (which own JSON parsing). The Express adapter defers to
+   * `express.json({ limit })`. Default: 256 KiB.
+   */
+  maxBodyBytes?: number;
+
   contact?: string;
 
   /** One-liner that agents carry into conversations */
@@ -95,8 +103,16 @@ export interface MorlockConfig {
   /** Registry name for this site's agent identity, e.g. "morlock/acme-search" */
   agentName?: string;
 
+  /** Called once per incoming request, before the security pipeline runs. */
   onRequest?: (req: MorlockRequest, ctx: MorlockContext) => void;
+  /** Called when a handler throws. The `err` is the raw thrown value. */
   onError?: (err: unknown, req: MorlockRequest) => void;
+  /** Called when auth was required but the presented credential was rejected. */
+  onAuthFailure?: (info: { command: string; status: 401 | 403; reason: string }) => void;
+  /** Called when a request exceeds the rate limit window. */
+  onRateLimit?: (info: { command: string; clientIp: string; resetAt: number }) => void;
+  /** Called when a duplicate idempotency key triggers a cached replay. */
+  onIdempotencyReplay?: (info: { command: string; key: string }) => void;
 }
 
 // ─── Core Morlock Instance ────────────────────────────────────────────────────
@@ -116,6 +132,18 @@ export class Morlock {
     // Fail-closed: crash at startup if auth is declared but no verifier provided
     validateAuthConfig(this.auth, this.authOpts);
 
+    // Validate corsOrigins shape loudly — wildcard + writes is a spec violation.
+    const hasWriteOrUnsafe = Object.values(config.commands).some(
+      (d) => (d.safety ?? "unsafe") !== "read"
+    );
+    if (config.corsOrigins === "*" && hasWriteOrUnsafe) {
+      console.warn(
+        `[morlock] corsOrigins: "*" is declared but commands include write/unsafe operations. ` +
+          `Per spec v0.2 §3.3, "*" is only acceptable for fully public, read-only, unauthenticated manifests. ` +
+          `Restrict corsOrigins to an explicit allowlist.`
+      );
+    }
+
     // Warn about missing safety annotations and unregistered handlers
     for (const [name, def] of Object.entries(config.commands)) {
       if (def.safety === undefined) {
@@ -128,6 +156,11 @@ export class Morlock {
     }
   }
 
+  /** baseUrl with any trailing slash stripped. */
+  private get normalizedBaseUrl(): string {
+    return this.config.baseUrl.replace(/\/+$/, "");
+  }
+
   // ── Manifest ──────────────────────────────────────────────────────────────
 
   manifest(): MorlockManifest {
@@ -137,11 +170,12 @@ export class Morlock {
       commands[name] = schema;
     }
 
+    const baseUrl = this.normalizedBaseUrl;
     return {
       morlock: "0.2",
       name: this.config.name,
-      baseUrl: this.config.baseUrl,
-      endpoint: `${this.config.baseUrl}${this.endpoint}`,
+      baseUrl,
+      endpoint: `${baseUrl}${this.endpoint}`,
       auth: this.auth,
       commands,
       rateLimit: this.config.rateLimit !== false && this.config.rateLimit
@@ -168,13 +202,19 @@ export class Morlock {
 
     this.config.onRequest?.(request, ctx);
 
+    // Rate-limit meta is kept around so we can attach it to every response,
+    // not only 429s — agents benefit from seeing their current budget on 200s.
+    let rateLimitMeta: { rateLimitRemaining?: number; rateLimitReset?: number } = {};
+
     // 1. Rate limiting
     if (this.config.rateLimit !== false) {
       const rlOpts = this.config.rateLimit ?? {};
       const xff = ctx.headers["x-forwarded-for"];
       const rl = await checkRateLimit(ctx.ip, xff, rlOpts);
+      rateLimitMeta = { rateLimitRemaining: rl.remaining, rateLimitReset: rl.resetAt };
 
       if (!rl.allowed) {
+        this.config.onRateLimit?.({ command: request.command, clientIp: rl.resolvedIp, resetAt: rl.resetAt });
         return {
           ok: false,
           requestId,
@@ -182,10 +222,7 @@ export class Morlock {
             code: MorlockErrors.RATE_LIMITED,
             message: "The machinery needs rest. Too many requests.",
           },
-          meta: {
-            rateLimitRemaining: rl.remaining,
-            rateLimitReset: rl.resetAt,
-          },
+          meta: rateLimitMeta,
         };
       }
     }
@@ -200,6 +237,7 @@ export class Morlock {
           code: MorlockErrors.UNKNOWN_COMMAND,
           message: "Nothing stirs in the dark. Command not found.",
         },
+        meta: rateLimitMeta,
       };
     }
 
@@ -216,6 +254,11 @@ export class Morlock {
     );
 
     if (!authResult.ok) {
+      this.config.onAuthFailure?.({
+        command: request.command,
+        status: authResult.status,
+        reason: authResult.reason,
+      });
       return {
         ok: false,
         requestId,
@@ -223,6 +266,7 @@ export class Morlock {
           code: authResult.status === 401 ? MorlockErrors.AUTH_REQUIRED : MorlockErrors.FORBIDDEN,
           message: authResult.reason,
         },
+        meta: rateLimitMeta,
       };
     }
 
@@ -239,19 +283,25 @@ export class Morlock {
         ok: false,
         requestId,
         error: {
-          code: MorlockErrors.IDEMPOTENCY_KEY_REQUIRED,
+          code:
+            idempCheck.code === "key-required"
+              ? MorlockErrors.IDEMPOTENCY_KEY_REQUIRED
+              : MorlockErrors.INVALID_PARAMS,
           message: idempCheck.reason,
         },
+        meta: rateLimitMeta,
       };
     }
 
     if (idempCheck.status === "duplicate") {
+      this.config.onIdempotencyReplay?.({ command: request.command, key: idempCheck.key });
       const cached = idempCheck.record.body as MorlockResponse;
       return {
         ...cached,
         requestId,
         meta: {
           ...(cached.meta ?? {}),
+          ...rateLimitMeta,
           cached: true,
           idempotentReplayed: true,
         },
@@ -268,6 +318,7 @@ export class Morlock {
           code: MorlockErrors.INVALID_PARAMS,
           message: validationError,
         },
+        meta: rateLimitMeta,
       };
     }
 
@@ -295,6 +346,7 @@ export class Morlock {
         result,
         meta: {
           executionMs: Date.now() - start,
+          ...rateLimitMeta,
           ...(idempCheck.key ? { idempotencyKey: idempCheck.key } : {}),
         },
       };
@@ -310,6 +362,7 @@ export class Morlock {
         },
         meta: {
           executionMs: Date.now() - start,
+          ...rateLimitMeta,
           ...(idempCheck.key ? { idempotencyKey: idempCheck.key } : {}),
         },
       };
@@ -331,32 +384,125 @@ export class Morlock {
     return response;
   }
 
+  // ── Body parsing (shared by Next.js and fetch adapters) ──────────────────
+
+  private get maxBodyBytes(): number {
+    return this.config.maxBodyBytes ?? 256 * 1024;
+  }
+
+  /**
+   * Read a Request body with a size ceiling, then JSON-parse. Returns either
+   * the parsed body or a fully-formed error Response ready to return.
+   */
+  private async readJsonBody(
+    request: Request,
+    corsHeaders: Record<string, string>
+  ): Promise<{ body: MorlockRequest } | { error: Response }> {
+    const limit = this.maxBodyBytes;
+
+    // Fast-path reject: Content-Length is present and already over the cap.
+    const declaredLen = Number(request.headers.get("content-length") ?? NaN);
+    if (Number.isFinite(declaredLen) && declaredLen > limit) {
+      return { error: this.bodyTooLargeResponse(corsHeaders) };
+    }
+
+    // Drain the stream ourselves so we can cap even when Content-Length lies.
+    let text: string;
+    try {
+      text = await request.text();
+    } catch {
+      return { error: this.invalidJsonResponse(corsHeaders) };
+    }
+
+    if (text.length > limit) {
+      return { error: this.bodyTooLargeResponse(corsHeaders) };
+    }
+
+    if (!text) {
+      // Empty body is not valid JSON per RFC 8259, and we need at least { command }.
+      return { error: this.invalidJsonResponse(corsHeaders) };
+    }
+
+    try {
+      return { body: JSON.parse(text) as MorlockRequest };
+    } catch {
+      return { error: this.invalidJsonResponse(corsHeaders) };
+    }
+  }
+
+  private invalidJsonResponse(corsHeaders: Record<string, string>): Response {
+    return Response.json(
+      {
+        ok: false,
+        error: { code: MorlockErrors.INVALID_PARAMS, message: "Request body must be valid JSON." },
+      },
+      { status: 400, headers: corsHeaders }
+    );
+  }
+
+  private bodyTooLargeResponse(corsHeaders: Record<string, string>): Response {
+    return Response.json(
+      {
+        ok: false,
+        error: {
+          code: MorlockErrors.INVALID_PARAMS,
+          message: `Request body exceeds ${this.maxBodyBytes} bytes.`,
+        },
+      },
+      { status: 413, headers: corsHeaders }
+    );
+  }
+
+  /**
+   * Derive `X-RateLimit-*` HTTP headers from a MorlockResponse's meta. Returns
+   * an empty object when rate limiting is disabled so we don't advertise stale
+   * numbers to callers.
+   */
+  private rateLimitHeaders(response: MorlockResponse): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (typeof response.meta?.rateLimitRemaining === "number") {
+      out["X-RateLimit-Remaining"] = String(response.meta.rateLimitRemaining);
+    }
+    if (typeof response.meta?.rateLimitReset === "number") {
+      // Epoch seconds per the common X-RateLimit-Reset convention (Retry-After-style).
+      out["X-RateLimit-Reset"] = String(Math.floor(response.meta.rateLimitReset / 1000));
+    }
+    return out;
+  }
+
   // ── CORS helper ─────────────────────────────────────────────────────────
 
   private getCorsHeaders(origin: string | undefined): Record<string, string> {
     const allowed = this.config.corsOrigins ?? [];
 
+    // Always emit Vary: Origin so any caching layer (CDN, browser) keys
+    // responses per Origin and can't serve a cross-origin response to the
+    // wrong caller.
+    const base: Record<string, string> = {
+      "X-Morlock": "0.2",
+      "Vary": "Origin",
+    };
+
     if (allowed === "*") {
       return {
+        ...base,
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers":
           "Content-Type, Authorization, X-Api-Key, X-Morlock-Idempotency-Key, X-Morlock-Request-Id",
-        "X-Morlock": "0.2",
       };
     }
 
     if (!origin || !allowed.includes(origin)) {
-      return { "X-Morlock": "0.2" };
+      return base;
     }
 
     return {
+      ...base,
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers":
         "Content-Type, Authorization, X-Api-Key, X-Morlock-Idempotency-Key, X-Morlock-Request-Id",
-      "Vary": "Origin",
-      "X-Morlock": "0.2",
     };
   }
 
@@ -405,6 +551,7 @@ export class Morlock {
         const response = await this.execute(req.body as MorlockRequest, ctx);
         const status = response.ok ? 200 : this.errorStatus(response);
         for (const [k, v] of Object.entries(corsHeaders)) res.setHeader(k, v);
+        for (const [k, v] of Object.entries(this.rateLimitHeaders(response))) res.setHeader(k, v);
         return res.status(status).json(response);
       }
 
@@ -425,21 +572,8 @@ export class Morlock {
         const origin = request.headers.get("origin") ?? undefined;
         const corsHeaders = this.getCorsHeaders(origin);
 
-        let body: MorlockRequest;
-        try {
-          body = await request.json() as MorlockRequest;
-        } catch {
-          return Response.json(
-            {
-              ok: false,
-              error: {
-                code: MorlockErrors.INVALID_PARAMS,
-                message: "Request body must be valid JSON.",
-              },
-            },
-            { status: 400, headers: corsHeaders }
-          );
-        }
+        const parsed = await this.readJsonBody(request, corsHeaders);
+        if ("error" in parsed) return parsed.error;
 
         // ip is intentionally undefined: Request has no socket IP, and trusting
         // leftmost X-Forwarded-For would let callers spoof their rate-limit key.
@@ -450,9 +584,12 @@ export class Morlock {
           clientIp: "unknown",
         };
 
-        const response = await this.execute(body, ctx);
+        const response = await this.execute(parsed.body, ctx);
         const status = response.ok ? 200 : this.errorStatus(response);
-        return Response.json(response, { status, headers: corsHeaders });
+        return Response.json(response, {
+          status,
+          headers: { ...corsHeaders, ...this.rateLimitHeaders(response) },
+        });
       },
     };
   }
@@ -475,30 +612,21 @@ export class Morlock {
       }
 
       if (request.method === "POST") {
-        let body: MorlockRequest;
-        try {
-          body = await request.json() as MorlockRequest;
-        } catch {
-          return Response.json(
-            {
-              ok: false,
-              error: {
-                code: MorlockErrors.INVALID_PARAMS,
-                message: "Request body must be valid JSON.",
-              },
-            },
-            { status: 400, headers: corsHeaders }
-          );
-        }
+        const parsed = await this.readJsonBody(request, corsHeaders);
+        if ("error" in parsed) return parsed.error;
+
         // ip undefined on purpose — see Next.js adapter for rationale.
         const ctx: MorlockContext = {
           headers: Object.fromEntries(request.headers.entries()),
           ip: undefined,
           clientIp: "unknown",
         };
-        const response = await this.execute(body, ctx);
+        const response = await this.execute(parsed.body, ctx);
         const status = response.ok ? 200 : this.errorStatus(response);
-        return Response.json(response, { status, headers: corsHeaders });
+        return Response.json(response, {
+          status,
+          headers: { ...corsHeaders, ...this.rateLimitHeaders(response) },
+        });
       }
 
       return null;
@@ -511,25 +639,7 @@ export class Morlock {
     args: Record<string, unknown>,
     def: CommandDefinition
   ): string | null {
-    if (!def.params) return null;
-
-    for (const [key, schema] of Object.entries(def.params)) {
-      const value = args[key];
-      if (schema.required && (value === undefined || value === null)) {
-        return `Missing required param: "${key}"`;
-      }
-      if (value !== undefined && schema.type) {
-        const actualType = Array.isArray(value) ? "array" : typeof value;
-        if (actualType !== schema.type) {
-          return `Param "${key}" should be ${schema.type}, got ${actualType}`;
-        }
-      }
-      if (schema.enum && value !== undefined && !schema.enum.includes(String(value))) {
-        return `Param "${key}" must be one of: ${schema.enum.join(", ")}`;
-      }
-    }
-
-    return null;
+    return validateParamsAgainst(args, def);
   }
 
   private errorStatus(response: MorlockResponse): number {
@@ -551,6 +661,89 @@ export class Morlock {
 
 export function createMorlock(config: MorlockConfig): Morlock {
   return new Morlock(config);
+}
+
+// ── Param validation ─────────────────────────────────────────────────────────
+
+/**
+ * Validate an args object against a command's param schema. Returns the first
+ * validation error as a human-readable string, or null if valid.
+ *
+ * Exported separately from the Morlock class so tests and custom transports can
+ * reuse it. Error messages are intentionally generic — they surface to agents
+ * and should not leak internal state.
+ */
+export function validateParamsAgainst(
+  args: Record<string, unknown>,
+  def: { params?: Record<string, ParamSchema> }
+): string | null {
+  if (!def.params) return null;
+
+  for (const [key, schema] of Object.entries(def.params)) {
+    const value = args[key];
+    const isMissing = value === undefined || value === null;
+
+    if (schema.required && isMissing) {
+      return `Missing required param: "${key}"`;
+    }
+    if (isMissing) continue;
+
+    // Type check. typeof null === "object" is handled by the missing-check above.
+    const actualType = Array.isArray(value) ? "array" : typeof value;
+    if (actualType !== schema.type) {
+      return `Param "${key}" should be ${schema.type}, got ${actualType}`;
+    }
+
+    if (schema.enum) {
+      // enum values are strings in the schema; compare by stringified value so
+      // callers can declare ["1","2"] for numeric enums without surprises.
+      if (!schema.enum.includes(String(value))) {
+        return `Param "${key}" must be one of: ${schema.enum.join(", ")}`;
+      }
+    }
+
+    if (schema.type === "string" && typeof value === "string") {
+      if (schema.minLength !== undefined && value.length < schema.minLength) {
+        return `Param "${key}" must be at least ${schema.minLength} characters`;
+      }
+      if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+        return `Param "${key}" must be at most ${schema.maxLength} characters`;
+      }
+      if (schema.pattern !== undefined) {
+        // Compile lazily per call. Consumers with hot paths can precompile in
+        // their own layer; this is correct, not fast.
+        let re: RegExp;
+        try {
+          re = new RegExp(schema.pattern);
+        } catch {
+          return `Param "${key}" has an invalid pattern on the server side`;
+        }
+        if (!re.test(value)) {
+          return `Param "${key}" does not match the required pattern`;
+        }
+      }
+    }
+
+    if (schema.type === "number" && typeof value === "number") {
+      if (!Number.isFinite(value)) {
+        return `Param "${key}" must be a finite number`;
+      }
+      if (schema.min !== undefined && value < schema.min) {
+        return `Param "${key}" must be >= ${schema.min}`;
+      }
+      if (schema.max !== undefined && value > schema.max) {
+        return `Param "${key}" must be <= ${schema.max}`;
+      }
+    }
+
+    if (schema.type === "array" && Array.isArray(value)) {
+      if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+        return `Param "${key}" must have at most ${schema.maxItems} items`;
+      }
+    }
+  }
+
+  return null;
 }
 
 // ── Re-exports ────────────────────────────────────────────────────────────────

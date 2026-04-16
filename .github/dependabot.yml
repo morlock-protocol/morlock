@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Keep Actions themselves up to date. @morlock/core has zero runtime deps,
+  # so there's no npm ecosystem to watch on the root package. devDependencies
+  # (@types/node) is updated on demand.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

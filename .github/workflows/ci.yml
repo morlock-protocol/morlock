@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: "@morlock/core · Node ${{ matrix.node }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # Fails the build if anything we'd ship includes files we don't want.
+      # The dry-run output lists every file; `grep -v` expects only allowed ones.
+      - name: Verify publish contents
+        run: |
+          npm publish --dry-run --access public 2>&1 | tee /tmp/pack.log
+          if grep -E '(^|/)(src/|tsconfig\.json|\.env|examples/|spec/|packages/)' /tmp/pack.log; then
+            echo "::error::Tarball contains files that should be excluded."
+            exit 1
+          fi
+
+  cli:
+    name: "@morlock/cli · Node ${{ matrix.node }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    defaults:
+      run:
+        working-directory: packages/cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: packages/cli/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Smoke-test CLI help
+        run: node dist/bin.js help

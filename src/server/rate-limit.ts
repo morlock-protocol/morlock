@@ -8,8 +8,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface RateLimiterStore {
-  /** Returns current count after increment. TTL is set on first write. */
-  increment(key: string, windowMs: number): Promise<number>;
+  /**
+   * Increment the counter for `key` and return both the post-increment count
+   * and the timestamp (ms since epoch) at which the window will reset.
+   *
+   * Implementations should create a fresh bucket on first increment and when
+   * the previous bucket has expired. TTL must equal the remaining window.
+   */
+  increment(key: string, windowMs: number): Promise<{ count: number; resetAt: number }>;
 }
 
 export interface RateLimitOptions {
@@ -68,21 +74,18 @@ export class InMemoryRateLimiterStore implements RateLimiterStore {
     }
   }
 
-  async increment(key: string, windowMs: number): Promise<number> {
+  async increment(key: string, windowMs: number): Promise<{ count: number; resetAt: number }> {
     const now = Date.now();
     const existing = this.buckets.get(key);
 
     if (!existing || now >= existing.resetAt) {
-      this.buckets.set(key, { count: 1, resetAt: now + windowMs });
-      return 1;
+      const bucket = { count: 1, resetAt: now + windowMs };
+      this.buckets.set(key, bucket);
+      return { count: 1, resetAt: bucket.resetAt };
     }
 
     existing.count++;
-    return existing.count;
-  }
-
-  getResetAt(key: string): number {
-    return this.buckets.get(key)?.resetAt ?? Date.now();
+    return { count: existing.count, resetAt: existing.resetAt };
   }
 
   private sweep(): void {
@@ -148,8 +151,7 @@ export async function checkRateLimit(
   const resolvedIp = resolveClientIp(socketIp, xff, trustedProxyCount);
 
   const key = `rl:${resolvedIp}`;
-  const count = await store.increment(key, windowMs);
-  const resetAt = Date.now() + windowMs;
+  const { count, resetAt } = await store.increment(key, windowMs);
 
   return {
     allowed: count <= maxRequests,

@@ -10,6 +10,24 @@ export interface ParamSchema {
   required?: boolean;
   enum?: string[];
   default?: unknown;
+
+  /** For `type: "string"` — reject values shorter than this. */
+  minLength?: number;
+  /** For `type: "string"` — reject values longer than this. */
+  maxLength?: number;
+  /**
+   * For `type: "string"` — regex the value must match. String form so the
+   * manifest stays JSON-serializable; compiled at validation time.
+   */
+  pattern?: string;
+
+  /** For `type: "number"` — reject values below this (inclusive). */
+  min?: number;
+  /** For `type: "number"` — reject values above this (inclusive). */
+  max?: number;
+
+  /** For `type: "array"` — reject arrays longer than this. */
+  maxItems?: number;
 }
 
 /**

@@ -88,10 +88,23 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
 const DEFAULT_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 const IDEMPOTENCY_HEADER = "x-morlock-idempotency-key";
 
+// Bounds on the key itself. A key that's 10 MB long is not an idempotency key,
+// it's a denial-of-service vector against the store. 255 chars is comfortably
+// large for UUIDs, ULIDs, or path-like composite keys.
+const MAX_KEY_LENGTH = 255;
+// Printable-ASCII subset: alphanumerics plus common separators. Rejects control
+// chars, spaces, unicode, quotes, and anything that could confuse downstream
+// logging / storage systems.
+const VALID_KEY_RE = /^[A-Za-z0-9_\-:.]+$/;
+
+export function isValidIdempotencyKey(key: string): boolean {
+  return key.length > 0 && key.length <= MAX_KEY_LENGTH && VALID_KEY_RE.test(key);
+}
+
 export type IdempotencyCheckResult =
   | { status: "proceed"; key: string | null }
   | { status: "duplicate"; record: IdempotencyRecord; key: string }
-  | { status: "rejected"; reason: string };
+  | { status: "rejected"; reason: string; code: "key-required" | "key-malformed" };
 
 /**
  * Check idempotency before executing a write command.
@@ -121,12 +134,24 @@ export async function checkIdempotency(
     if (requireKeyForWrites) {
       return {
         status: "rejected",
+        code: "key-required",
         reason:
           `Command "${commandName}" is a write operation and requires an ` +
           `${IDEMPOTENCY_HEADER} header for replay protection.`,
       };
     }
     return { status: "proceed", key: null };
+  }
+
+  if (!isValidIdempotencyKey(key)) {
+    // Reject rather than silently truncating. A malformed key suggests a broken
+    // client, not a best-effort attempt we should normalize.
+    return {
+      status: "rejected",
+      code: "key-malformed",
+      reason:
+        `${IDEMPOTENCY_HEADER} must be 1..${MAX_KEY_LENGTH} chars of [A-Za-z0-9_\\-:.]`,
+    };
   }
 
   const existing = await store.get(key);

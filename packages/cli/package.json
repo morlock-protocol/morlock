@@ -1,18 +1,43 @@
 {
   "name": "@morlock/cli",
   "version": "0.2.0",
-  "description": "CLI toolchain for the Morlock protocol",
+  "description": "Command-line tools for the Morlock protocol — quickstart walkthrough and manifest pinging.",
   "bin": {
-    "morlock": "./dist/bin.js",
-    "quickstart": "./dist/commands/quickstart.js"
+    "morlock": "./dist/bin.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
   },
+  "keywords": [
+    "morlock",
+    "ai-agent",
+    "cli",
+    "protocol",
+    "well-known",
+    "agentic-web"
+  ],
   "license": "MIT",
+  "homepage": "https://github.com/morlock-protocol/morlock/tree/main/packages/cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/morlock-protocol/morlock.git",
+    "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
-    "@types/node": "^25.5.2"
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

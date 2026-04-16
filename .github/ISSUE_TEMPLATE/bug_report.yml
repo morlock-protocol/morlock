@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in @morlock/core, @morlock/cli, or the spec behaviour is broken.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report. Please **do not** report security vulnerabilities here — see [SECURITY.md](../SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: "@morlock/core version"
+      placeholder: "0.2.2"
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: "Runtime"
+      description: "Node 22, Bun 1.1, Cloudflare Workers, etc."
+      placeholder: "Node 22.3.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: "Steps to reproduce"
+      description: "Ideally a minimal createMorlock config and the curl/fetch that triggers the bug."
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Actual"
+    validations:
+      required: true

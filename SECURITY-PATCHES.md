@@ -4,6 +4,45 @@ Version-by-version record of security-relevant fixes shipped in `@morlock/core`.
 
 ---
 
+# v0.2.2
+
+Launch-readiness pass. Two security-relevant changes on top of Batches 1–7 described in `PRODUCTION_CHANGELOG.md`.
+
+## Medium — Idempotency-key DoS via unbounded keys
+
+**Files:** `src/server/idempotency.ts` (updated)
+
+### What was wrong
+
+`checkIdempotency` accepted any string as the `X-Morlock-Idempotency-Key` header value. A 10 MB header value from a hostile client would be pinned in the in-memory store for 24 hours, and a sustained stream of large keys could exhaust memory.
+
+### What changed
+
+Added `isValidIdempotencyKey()` bounding keys to 1..255 chars of `[A-Za-z0-9_\-:.]`. Malformed keys are now rejected early with `422 INVALID_PARAMS` (distinct from `409 IDEMPOTENCY_KEY_REQUIRED` for missing keys — the discriminator is on the `checkIdempotency` result).
+
+Covered by `tests/idempotency.test.ts: key validation rejects empty / too-long / bad-char`.
+
+## Medium — Body size DoS in Next.js and fetch adapters
+
+**Files:** `src/server/index.ts` (updated)
+
+### What was wrong
+
+The Next.js and fetch adapters called `await request.json()` with no size ceiling. A malicious 50 MB body would be parsed into memory unconditionally, blocking the event loop.
+
+### What changed
+
+Added `MorlockConfig.maxBodyBytes` (default 256 KiB). Both adapters now route JSON parsing through a new `readJsonBody()` that:
+1. Fast-path rejects on `Content-Length > limit`.
+2. Drains the stream to text with a size check after.
+3. JSON-parses the bounded text.
+
+Oversized bodies return `413` (Payload Too Large) with `INVALID_PARAMS`. Empty bodies return `400`.
+
+The Express adapter still defers to `express.json({ limit })` — the Node idiom — and returns an actionable 400 if body parsing was not installed upstream.
+
+---
+
 # v0.2.1
 
 Three follow-up fixes to v0.2.0, caught during a post-publish audit. All are on the server path.

@@ -1,0 +1,17 @@
+# Every file in this repo needs a second pair of eyes before merging to main.
+# This file lists the default reviewer(s) auto-requested by GitHub on any PR.
+#
+# Format: <path> <@owner> [@owner-2 ...]
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Fallback — catches anything not covered by a more specific rule below.
+*                       @werner-mnm
+
+# Security-sensitive areas — require explicit owner sign-off.
+/spec/**                @werner-mnm
+/src/server/auth.ts     @werner-mnm
+/src/server/rate-limit.ts @werner-mnm
+/src/server/idempotency.ts @werner-mnm
+/SECURITY.md            @werner-mnm
+/SECURITY-PATCHES.md    @werner-mnm
+/.github/**             @werner-mnm

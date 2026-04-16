@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import {
-  C, g, c, y, dim, b, w,
-  sleep, clearScreen, typewrite, printLines,
+  g, c, y, dim, b, w,
+  sleep, clearScreen, printLines,
   prompt, hr, header, waitForEnter,
-  LOGO, SPINNER_FRAMES,
+  LOGO,
 } from "../ui";
 
 // ─── Screens ──────────────────────────────────────────────────────────────────
@@ -13,17 +13,20 @@ async function screenWelcome(): Promise<void> {
   clearScreen();
   console.log("");
   console.log(`  ${LOGO}  ${dim("quickstart")}`);
-  console.log(`  ${dim("Make your site natively agent-friendly.")}`);
+  console.log(`  ${dim("A guided walkthrough for making a site agent-native.")}`);
   console.log("");
   hr();
   console.log("");
-  console.log("  This walkthrough will:");
+  console.log("  This walkthrough is interactive. It will:");
   console.log("");
-  console.log(`   ${g("1.")} Install ${c("@morlock/core")}`);
-  console.log(`   ${g("2.")} Add the middleware to your server`);
-  console.log(`   ${g("3.")} Define your first command`);
-  console.log(`   ${g("4.")} Show you your live agent manifest`);
-  console.log(`   ${g("5.")} Simulate an AI agent discovering you`);
+  console.log(`   ${g("1.")} Show you how to install ${c("@morlock/core")}`);
+  console.log(`   ${g("2.")} Show you the middleware setup`);
+  console.log(`   ${g("3.")} Help you shape your first command`);
+  console.log(`   ${g("4.")} Show what your live agent manifest looks like`);
+  console.log(`   ${g("5.")} Tell you how to verify everything end-to-end`);
+  console.log("");
+  console.log(`  ${dim("Nothing is installed, mounted, or published by this walkthrough.")}`);
+  console.log(`  ${dim("It's a teaching tool — copy the snippets into your own project.")}`);
   console.log("");
   hr();
   console.log("");
@@ -40,26 +43,11 @@ async function screenInstall(): Promise<void> {
   hr();
   console.log("");
 
+  console.log(`  ${dim("In your project directory, run:")}`);
+  console.log("");
   console.log(`  ${g("$")} ${w("npm install @morlock/core")}`);
   console.log("");
-  await sleep(600);
-
-  let fi = 0;
-  const spin = setInterval(() => {
-    process.stdout.write(`\r  ${C.cyan}${SPINNER_FRAMES[fi++ % SPINNER_FRAMES.length]}${C.reset}  ${dim("fetching @morlock/core...")}`);
-  }, 80);
-
-  await sleep(2200);
-  clearInterval(spin);
-  process.stdout.write("\r" + " ".repeat(48) + "\r");
-
-  await printLines([
-    `  ${dim("added 1 package in 0.8s")}`,
-    `  ${g("\u2713")}  ${w("@morlock/core")} installed`,
-  ], { lineDelay: 120 });
-
-  console.log("");
-  console.log(`  ${dim("That's the only dependency. No build step, no config files yet.")}`);
+  console.log(`  ${dim("Zero runtime dependencies. TypeScript types included.")}`);
   console.log("");
   await waitForEnter();
 }
@@ -68,40 +56,47 @@ async function screenMiddleware(): Promise<void> {
   clearScreen();
   header(2, 5, "Add the middleware");
 
-  console.log("  Mount Morlock on your existing server in two lines.");
+  console.log("  Mount Morlock on your existing server in a few lines.");
   console.log(`  ${dim("No new process. No separate port. It attaches to what you already have.")}`);
   console.log("");
   hr();
   console.log("");
 
   await printLines([
-    `  ${dim("// server.js (Express example)")}`,
+    `  ${dim("// server.ts (Express example)")}`,
   ]);
-  await sleep(200);
+  await sleep(150);
 
   const code = [
-    `  ${c("import")} { createMorlock } ${c("from")} ${y("'@morlock/core/server'")}`,
+    `  ${c("import")} express ${c("from")} ${y('"express"')}`,
+    `  ${c("import")} { createMorlock } ${c("from")} ${y('"@morlock/core/server"')}`,
+    "",
+    `  ${c("const")} app ${g("=")} express()`,
+    `  app.use(express.${w("json")}())`,
     "",
     `  ${c("const")} morlock ${g("=")} createMorlock({`,
-    `    name:     ${y('"my-app"')},`,
-    `    baseUrl:  ${y('"https://my-app.com"')},`,
-    `    commands: { ${dim("/* ... */")} },`,
-    "  })",
+    `    name:    ${y('"my-app"')},`,
+    `    baseUrl: ${y('"https://my-app.com"')},`,
+    `    commands: {`,
+    `      ${dim("/* your commands — defined on the next screen */")}`,
+    `    },`,
+    `  })`,
     "",
     `  app.${w("use")}(morlock.${w("express")}())`,
+    `  app.listen(${c("3000")})`,
   ];
 
   for (const line of code) {
     console.log(line);
-    await sleep(70);
+    await sleep(45);
   }
 
   console.log("");
   hr();
   console.log("");
-  console.log(`  ${g("\u2713")}  That's it. Morlock is now running alongside your app.`);
+  console.log(`  ${g("\u2713")}  Morlock exposes ${c("/.well-known/morlock")} automatically.`);
   console.log("");
-  console.log(`  ${dim("Adapters available:")}  express  next  cloudflare  bun  deno`);
+  console.log(`  ${dim("Other adapters:")}  morlock.${w("nextjs")}()   morlock.${w("fetch")}()   ${dim("(Workers / Bun / Deno)")}`);
   console.log("");
   await waitForEnter();
 }
@@ -111,42 +106,47 @@ async function screenCommands(): Promise<void> {
   header(3, 5, "Define your first command");
 
   console.log(`  Commands are what AI agents can ${b("do")} on your site.`);
-  console.log(`  ${dim("Each one has a name, typed inputs, and a handler. Plain TypeScript.")}`);
+  console.log(`  ${dim("Each command has a description, typed params, a safety level, and a handler.")}`);
   console.log("");
   hr();
   console.log("");
 
-  const name = await prompt(`  ${g("?")}  What should your first command do? ${dim("(e.g. search, get-user, list-products)")}  `);
-  const cmdName = name.replace(/\s+/g, "-").toLowerCase() || "search";
+  const rawName = await prompt(`  ${g("?")}  Name your first command ${dim("(e.g. search, getUser, listPosts)")}  `);
+  const cmdName = rawName.replace(/[^a-zA-Z0-9_-]/g, "").trim() || "search";
 
   console.log("");
-  await sleep(300);
+  await sleep(200);
 
+  // All commands default to "unsafe" if safety is omitted. Teaching a read
+  // example here avoids the new user's first request hitting a 409.
   const code = [
-    `  ${dim("// morlock.config.ts")}`,
+    `  ${dim("// inside createMorlock({ commands: { ... } })")}`,
     "",
-    "  commands: [",
-    "    {",
-    `      name:    ${y(`"${cmdName}"`)},`,
-    `      input:   { query: ${c("string")} },`,
-    `      handler: ${c("async")} ({ query }) ${g("=>")} {`,
-    `        ${dim("// your logic here")}`,
-    `        ${c("return")} { results: [] }`,
-    "      }",
-    "    }",
-    "  ]",
+    `  ${c(cmdName)}: {`,
+    `    description: ${y(`"What this command does, in one sentence."`)},`,
+    `    safety:      ${y('"read"')},  ${dim("// read | write | unsafe")}`,
+    `    params: {`,
+    `      query: { type: ${y('"string"')}, required: ${c("true")} },`,
+    `    },`,
+    `    handler: ${c("async")} ({ query }) ${g("=>")} {`,
+    `      ${dim("// your logic here")}`,
+    `      ${c("return")} { results: [] }`,
+    `    },`,
+    `  },`,
   ];
 
   for (const line of code) {
     console.log(line);
-    await sleep(55);
+    await sleep(45);
   }
 
   console.log("");
   hr();
   console.log("");
-  console.log(`  ${g("\u2713")}  Command ${c(`"${cmdName}"`)} registered.`);
-  console.log(`  ${dim("You can add as many commands as you like.")}`);
+  console.log(`  ${g("\u2713")}  ${c(cmdName)} is a ${c("read")} command — no auth or idempotency key needed.`);
+  console.log("");
+  console.log(`  ${dim("Write commands require auth. Unsafe commands also require an")}`);
+  console.log(`  ${dim("X-Morlock-Idempotency-Key header. Add safety: \"write\" | \"unsafe\" to opt in.")}`);
   console.log("");
   await waitForEnter();
 }
@@ -155,78 +155,82 @@ async function screenManifest(): Promise<void> {
   clearScreen();
   header(4, 5, "Your manifest goes live");
 
-  console.log(`  Morlock automatically exposes ${c("/.well-known/morlock")} on your domain.`);
-  console.log(`  ${dim("This is what AI agents read to understand what your site can do.")}`);
+  console.log(`  Morlock serves your manifest at ${c("/.well-known/morlock")}.`);
+  console.log(`  ${dim("Agents read this to discover what your site can do.")}`);
   console.log("");
   hr();
   console.log("");
 
-  console.log(`  ${g("$")} ${w("curl https://your-app.com/.well-known/morlock")}`);
+  console.log(`  ${g("$")} ${w("curl https://my-app.com/.well-known/morlock")}`);
   console.log("");
-  await sleep(800);
+  await sleep(400);
 
+  // This mirrors the real spec v0.2 manifest shape. No made-up fields.
   const manifest = [
     `  ${y("{")}`,
-    `    ${c('"morlock"')}:   ${y('"0.2"')},`,
+    `    ${c('"morlock"')}:  ${y('"0.2"')},`,
     `    ${c('"name"')}:     ${y('"my-app"')},`,
-    `    ${c('"version"')}:  ${y('"1.0.0"')},`,
-    `    ${c('"commands"')}: [${y('"search"')}],`,
-    `    ${c('"transport"')}: ${y('"http"')}`,
+    `    ${c('"baseUrl"')}:  ${y('"https://my-app.com"')},`,
+    `    ${c('"endpoint"')}: ${y('"https://my-app.com/.well-known/morlock"')},`,
+    `    ${c('"auth"')}:     { ${c('"type"')}: ${y('"none"')} },`,
+    `    ${c('"commands"')}: {`,
+    `      ${c('"search"')}: {`,
+    `        ${c('"description"')}: ${y('"..."')},`,
+    `        ${c('"safety"')}:      ${y('"read"')},`,
+    `        ${c('"params"')}:      { ${c('"query"')}: { ${c('"type"')}: ${y('"string"')}, ${c('"required"')}: ${c("true")} } }`,
+    `      }`,
+    `    }`,
     `  ${y("}")}`,
   ];
 
   for (const line of manifest) {
     console.log(line);
-    await sleep(80);
+    await sleep(50);
   }
 
   console.log("");
   hr();
   console.log("");
-  console.log(`  ${g("\u2713")}  Any agent that knows the Morlock protocol can find this.`);
+  console.log(`  ${g("\u2713")}  Any agent speaking the Morlock protocol can find this.`);
   console.log(`  ${dim("No scraping. No browser. No vision model. Just a clean HTTP call.")}`);
   console.log("");
   await waitForEnter();
 }
 
-async function screenAgent(): Promise<void> {
+async function screenVerify(): Promise<void> {
   clearScreen();
-  header(5, 5, "Simulate an agent discovering you");
+  header(5, 5, "Verify it end-to-end");
 
-  console.log("  Here's what happens when an AI agent visits your site.");
-  console.log(`  ${dim("This is the whole point.")}`);
+  console.log("  Once your site is deployed, prove it works.");
+  console.log(`  ${dim("Two quick checks, no dashboard needed.")}`);
   console.log("");
   hr();
   console.log("");
 
-  console.log(`  ${g("$")} ${w("morlock simulate-agent --site your-app.com")}`);
+  console.log(`  ${b(w("1. Check the manifest is live"))}`);
   console.log("");
-
-  const steps = [
-    { text: `\u2192  checking ${c("your-app.com/.well-known/morlock")}`,   delay: 500  },
-    { text: `${g("\u2713")}  manifest found`,                                delay: 900  },
-    { text: "\u2192  reading available commands",                            delay: 1200 },
-    { text: `${g("\u2713")}  1 command found: ${c('"search"')}`,            delay: 1600 },
-    { text: `\u2192  calling ${c("search")}  ${dim('{ query: "morlock protocol" }')}`, delay: 2100 },
-    { text: `${g("\u2713")}  3 results returned in 42ms`,                   delay: 2800 },
-    { text: "",                                                              delay: 3100 },
-    { text: `${LOGO}  ${b(w("Your site is agent-ready."))}`,               delay: 3300 },
-  ];
-
-  for (const s of steps) {
-    await sleep(s.delay - (steps.indexOf(s) > 0 ? steps[steps.indexOf(s) - 1].delay : 0));
-    console.log(`  ${s.text}`);
-  }
-
+  console.log(`     ${g("$")} ${w("curl https://my-app.com/.well-known/morlock")}`);
+  console.log("");
+  console.log(`     ${dim("Should return JSON with \"morlock\": \"0.2\".")}`);
+  console.log("");
+  console.log(`  ${b(w("2. Probe it with the CLI"))}`);
+  console.log("");
+  console.log(`     ${g("$")} ${w("npx @morlock/cli ping my-app.com")}`);
+  console.log("");
+  console.log(`     ${dim("Prints the command list and highlights any manifest issues.")}`);
+  console.log("");
+  console.log(`  ${b(w("3. Invoke a command"))}`);
+  console.log("");
+  console.log(`     ${g("$")} ${w("curl -X POST https://my-app.com/.well-known/morlock \\")}`);
+  console.log(`         ${w("-H \"Content-Type: application/json\" \\")}`);
+  console.log(`         ${w("-d '{\"command\": \"search\", \"args\": {\"query\": \"hello\"}}'")}`);
+  console.log("");
+  console.log(`     ${dim("Should return { ok: true, result: { ... } }.")}`);
   console.log("");
   hr();
   console.log("");
-  console.log(`  ${dim("Next steps:")}`);
-  console.log("");
-  console.log(`   ${g("\u2192")}  ${w("morlocks.dev")}          docs, registry, examples`);
-  console.log(`   ${g("\u2192")}  ${c("npm i -g @morlock/cli")}  full CLI toolchain`);
-  console.log(`   ${g("\u2192")}  ${c("@morlock/openclaw")}      ClawHub skill adapter`);
-  console.log("");
+  console.log(`  ${dim("Full docs:")}  ${w("https://github.com/morlock-protocol/morlock")}`);
+  console.log(`  ${dim("Spec v0.2:")} ${w("https://github.com/morlock-protocol/morlock/blob/main/spec/v0.2.md")}`);
   console.log("");
   await waitForEnter("Exit");
 }
@@ -240,12 +244,13 @@ export async function quickstart(): Promise<void> {
     await screenMiddleware();
     await screenCommands();
     await screenManifest();
-    await screenAgent();
+    await screenVerify();
     clearScreen();
     console.log("");
     console.log(`  ${g("Done.")}  ${dim("Go build something agents can use.")}`);
     console.log("");
   } catch (e: unknown) {
+    // User hit Ctrl+C / closed stdin — treat as a clean exit, not a crash.
     if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "ERR_USE_AFTER_CLOSE") {
       process.exit(0);
     }

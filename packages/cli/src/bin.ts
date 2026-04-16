@@ -2,7 +2,6 @@
 
 import { quickstart } from "./commands/quickstart";
 import { ping } from "./commands/ping";
-import { badge } from "./commands/badge";
 import { dim, c, LOGO } from "./ui";
 
 const command = process.argv[2];
@@ -16,15 +15,24 @@ switch (command) {
   case "ping":
     ping(arg);
     break;
-  case "badge":
-    badge(arg);
+  case "help":
+  case "--help":
+  case "-h":
+    console.log("");
+    console.log(`  ${LOGO}  ${dim("CLI for the Morlock protocol")}`);
+    console.log("");
+    console.log(`  ${c("morlock quickstart")}          Interactive walkthrough for site owners`);
+    console.log(`  ${c("morlock ping <domain>")}       Probe a site's /.well-known/morlock manifest`);
+    console.log("");
+    console.log(`  ${dim("Docs:")} https://github.com/morlock-protocol/morlock`);
+    console.log("");
     break;
   default:
     console.log("");
     console.log(`  ${LOGO}`);
     console.log("");
-    console.log(`  Nothing by that name down here.`);
-    console.log(`  ${dim("Known passages:")}  ${c("quickstart")}  ${c("ping")}  ${c("badge")}`);
+    console.log(`  Unknown command: ${c(command)}`);
+    console.log(`  ${dim("Try:")}  ${c("morlock help")}`);
     console.log("");
     process.exit(1);
 }

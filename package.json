@@ -1,6 +1,6 @@
 {
   "name": "@morlock/core",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Make your site agent-native. The open protocol for bot-friendly web interfaces.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -26,6 +26,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "test": "tsc -p tsconfig.test.json && node --test 'dist-tests/tests/*.test.js'",
+    "test:watch": "tsc -p tsconfig.test.json --watch",
+    "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -49,5 +52,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
   }
 }

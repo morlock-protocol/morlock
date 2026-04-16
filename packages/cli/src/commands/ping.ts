@@ -13,13 +13,25 @@ interface Manifest {
   agentName?: string;
 }
 
-function fetch(url: string): Promise<{ status: number; body: string }> {
+// Follow up to 3 redirects. Sites commonly 301 apex → www or http → https;
+// refusing to follow would give false negatives on otherwise-healthy Morlock
+// deployments. Bounded to prevent redirect loops.
+function fetch(url: string, hops = 0): Promise<{ status: number; body: string; finalUrl: string }> {
+  if (hops > 3) return Promise.reject(new Error("too many redirects"));
   const mod = url.startsWith("https") ? https : http;
   return new Promise((resolve, reject) => {
     const req = mod.get(url, { timeout: 8000 }, (res) => {
+      const status = res.statusCode ?? 0;
+      const loc = res.headers.location;
+      if (status >= 300 && status < 400 && typeof loc === "string") {
+        res.resume(); // drain
+        const next = loc.startsWith("http") ? loc : new URL(loc, url).toString();
+        resolve(fetch(next, hops + 1));
+        return;
+      }
       let data = "";
       res.on("data", (chunk: Buffer) => { data += chunk.toString(); });
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: data }));
+      res.on("end", () => resolve({ status, body: data, finalUrl: url }));
     });
     req.on("error", reject);
     req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
