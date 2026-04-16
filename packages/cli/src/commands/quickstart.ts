@@ -80,14 +80,15 @@ async function screenMiddleware(): Promise<void> {
   await sleep(200);
 
   const code = [
-    `  ${c("import")} { morlock } ${c("from")} ${y("'@morlock/core/express'")}`,
+    `  ${c("import")} { createMorlock } ${c("from")} ${y("'@morlock/core/server'")}`,
     "",
-    `  ${c("const")} app ${g("=")} express()`,
+    `  ${c("const")} morlock ${g("=")} createMorlock({`,
+    `    name:     ${y('"my-app"')},`,
+    `    baseUrl:  ${y('"https://my-app.com"')},`,
+    `    commands: { ${dim("/* ... */")} },`,
+    "  })",
     "",
-    `  app.${w("use")}(morlock({`,
-    `    name:    ${y('"my-app"')},`,
-    `    version: ${y('"1.0.0"')},`,
-    "  }))",
+    `  app.${w("use")}(morlock.${w("express")}())`,
   ];
 
   for (const line of code) {

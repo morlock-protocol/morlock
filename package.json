@@ -1,36 +1,53 @@
 {
   "name": "@morlock/core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Make your site agent-native. The open protocol for bot-friendly web interfaces.",
   "main": "dist/index.js",
-  "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./client": "./dist/client.js",
-    "./server": "./dist/server.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
+    "morlock",
+    "ai-agent",
+    "llm",
+    "http",
+    "protocol",
+    "well-known",
     "agent",
     "bot",
-    "llm",
     "ai",
-    "protocol",
     "mcp",
-    "agentic-web",
-    "morlock"
+    "agentic-web"
   ],
   "license": "MIT",
   "homepage": "https://morlocks.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/morlock-protocol/morlock"
+    "url": "git+https://github.com/morlock-protocol/morlock.git"
   },
-  "dependencies": {
-    "@morlock/core": "^0.1.0"
+  "publishConfig": {
+    "access": "public"
   }
 }

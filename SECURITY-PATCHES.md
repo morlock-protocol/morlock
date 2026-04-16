@@ -1,4 +1,57 @@
-# Security Patches — @morlock/core v0.2.0
+# Security Patches — @morlock/core
+
+Version-by-version record of security-relevant fixes shipped in `@morlock/core`.
+
+---
+
+# v0.2.1
+
+Three follow-up fixes to v0.2.0, caught during a post-publish audit. All are on the server path.
+
+## High — Rate-limit IP spoof in Next.js and fetch adapters
+
+**Files:** `src/server/index.ts` (updated)
+
+### What was wrong
+
+v0.2.0 introduced `resolveClientIp()` with `trustedProxyCount` — but the Next.js and `fetch()` adapters bypassed it. Both pre-parsed `x-forwarded-for` with `.split(",")[0].trim()` and assigned the leftmost entry to `ctx.ip` before `checkRateLimit()` ran. That reopened exactly the spoof the module was built to close: any caller could set `X-Forwarded-For: <random>` and get a fresh rate-limit bucket per request.
+
+### What changed
+
+Next.js `POST` and `fetch()` `POST` now set `ctx.ip = undefined`. `resolveClientIp()` then decides based on `trustedProxyCount` + the raw XFF from headers. With the default `trustedProxyCount: 0`, edge-runtime deployments share a single `"unknown"` bucket — blunt but honest. Deployers behind Cloudflare/Vercel/etc. set `trustedProxyCount: 1` and get correct per-client limiting.
+
+The Express adapter was already correct (uses `req.socket.remoteAddress`).
+
+## High — Idempotent retries re-executed on handler failure
+
+**Files:** `src/server/index.ts` (updated)
+
+### What was wrong
+
+v0.2.0 only called `recordIdempotency()` in the success branch. A handler that produced a side effect and *then* threw (card charged, email sent, subsequent write failed) would get re-executed on retry. The protocol's own idempotency promise didn't hold when it mattered most.
+
+The cached-response replay branch was also storing only `{ result }`, losing the full response shape for failures.
+
+### What changed
+
+Both success and failure responses are now recorded under the idempotency key. Retries of a failed handler return the exact original failure verbatim with `meta.idempotentReplayed: true` — the side effect is not re-run. The stored body is now the full `MorlockResponse` rather than a partial wrapper.
+
+## Medium — Missing body guard in Express adapter; unguarded JSON parse in Next.js / fetch
+
+**Files:** `src/server/index.ts` (updated)
+
+### What was wrong
+
+The Express adapter assumed `req.body` was pre-parsed JSON. If `express.json()` wasn't installed, `execute()` crashed on `undefined.command` with no actionable error. The Next.js and `fetch()` adapters called `await request.json()` without a try/catch — invalid JSON bodies surfaced as unhandled promise rejections.
+
+### What changed
+
+- Express adapter returns `400 INVALID_PARAMS` with a message pointing at `express.json()` when `req.body` is missing.
+- Next.js and `fetch()` adapters wrap `request.json()` in try/catch and return `400 INVALID_PARAMS` on parse failure.
+
+---
+
+# v0.2.0
 
 ## Summary
 

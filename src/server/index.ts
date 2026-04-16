@@ -246,12 +246,15 @@ export class Morlock {
     }
 
     if (idempCheck.status === "duplicate") {
-      const cached = idempCheck.record;
+      const cached = idempCheck.record.body as MorlockResponse;
       return {
-        ok: cached.status < 400,
+        ...cached,
         requestId,
-        result: (cached.body as any)?.result,
-        meta: { cached: true, idempotentReplayed: true },
+        meta: {
+          ...(cached.meta ?? {}),
+          cached: true,
+          idempotentReplayed: true,
+        },
       };
     }
 
@@ -282,18 +285,11 @@ export class Morlock {
       idempotencyKey: idempCheck.key,
     };
 
+    let response: MorlockResponse;
+    let recordStatus: number;
     try {
       const result = await commandDef.handler(request.args ?? {}, enrichedCtx);
-
-      // 7. Record idempotency result for write commands
-      const successRecord: IdempotencyRecord = {
-        status: 200,
-        body: { result },
-        completedAt: Date.now(),
-      };
-      await recordIdempotency(idempCheck.key, successRecord, this.config.idempotency);
-
-      return {
+      response = {
         ok: true,
         requestId,
         result,
@@ -302,18 +298,37 @@ export class Morlock {
           ...(idempCheck.key ? { idempotencyKey: idempCheck.key } : {}),
         },
       };
+      recordStatus = 200;
     } catch (err) {
       this.config.onError?.(err, request);
-      return {
+      response = {
         ok: false,
         requestId,
         error: {
           code: MorlockErrors.COMMAND_FAILED,
           message: err instanceof Error ? err.message : "The gears jammed. Command execution failed.",
         },
-        meta: { executionMs: Date.now() - start },
+        meta: {
+          executionMs: Date.now() - start,
+          ...(idempCheck.key ? { idempotencyKey: idempCheck.key } : {}),
+        },
       };
+      recordStatus = 500;
     }
+
+    // 7. Record idempotency result (success OR failure) so retries don't
+    // re-execute a handler that already ran — including ones that threw
+    // after producing side effects (charged card, sent email, etc.).
+    if (idempCheck.key) {
+      const record: IdempotencyRecord = {
+        status: recordStatus,
+        body: response,
+        completedAt: Date.now(),
+      };
+      await recordIdempotency(idempCheck.key, record, this.config.idempotency);
+    }
+
+    return response;
   }
 
   // ── CORS helper ─────────────────────────────────────────────────────────
@@ -365,6 +380,21 @@ export class Morlock {
       }
 
       if (req.method === "POST" && url === this.endpoint) {
+        // Express doesn't parse JSON by default. Fail loudly rather than
+        // crashing inside execute() when body is undefined.
+        if (!req.body || typeof req.body !== "object") {
+          for (const [k, v] of Object.entries(corsHeaders)) res.setHeader(k, v);
+          return res.status(400).json({
+            ok: false,
+            error: {
+              code: MorlockErrors.INVALID_PARAMS,
+              message:
+                "Request body was not parsed as JSON. " +
+                "Install express.json() middleware before morlock.express().",
+            },
+          });
+        }
+
         const ctx: MorlockContext = {
           headers: req.headers,
           ip: req.socket?.remoteAddress,
@@ -392,13 +422,31 @@ export class Morlock {
         });
       },
       POST: async (request: Request): Promise<Response> => {
-        const body = await request.json() as MorlockRequest;
         const origin = request.headers.get("origin") ?? undefined;
         const corsHeaders = this.getCorsHeaders(origin);
 
+        let body: MorlockRequest;
+        try {
+          body = await request.json() as MorlockRequest;
+        } catch {
+          return Response.json(
+            {
+              ok: false,
+              error: {
+                code: MorlockErrors.INVALID_PARAMS,
+                message: "Request body must be valid JSON.",
+              },
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+
+        // ip is intentionally undefined: Request has no socket IP, and trusting
+        // leftmost X-Forwarded-For would let callers spoof their rate-limit key.
+        // resolveClientIp() uses trustedProxyCount + XFF from headers.
         const ctx: MorlockContext = {
           headers: Object.fromEntries(request.headers.entries()),
-          ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+          ip: undefined,
           clientIp: "unknown",
         };
 
@@ -427,10 +475,25 @@ export class Morlock {
       }
 
       if (request.method === "POST") {
-        const body = await request.json() as MorlockRequest;
+        let body: MorlockRequest;
+        try {
+          body = await request.json() as MorlockRequest;
+        } catch {
+          return Response.json(
+            {
+              ok: false,
+              error: {
+                code: MorlockErrors.INVALID_PARAMS,
+                message: "Request body must be valid JSON.",
+              },
+            },
+            { status: 400, headers: corsHeaders }
+          );
+        }
+        // ip undefined on purpose — see Next.js adapter for rationale.
         const ctx: MorlockContext = {
           headers: Object.fromEntries(request.headers.entries()),
-          ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+          ip: undefined,
           clientIp: "unknown",
         };
         const response = await this.execute(body, ctx);
